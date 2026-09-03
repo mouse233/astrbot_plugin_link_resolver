@@ -655,6 +655,23 @@ class XiaohongshuMixin:
     async def _process_xhs(
         self, event: AstrMessageEvent, target_link: str, is_from_card: bool = False
     ):
+        media_paths: list[Path] = []
+        try:
+            async for result in XiaohongshuMixin._process_xhs_inner(
+                self, event, target_link, is_from_card, media_paths
+            ):
+                yield result
+        finally:
+            if media_paths:
+                await self.cleanup_files(media_paths, [])
+
+    async def _process_xhs_inner(
+        self,
+        event: AstrMessageEvent,
+        target_link: str,
+        is_from_card: bool,
+        media_paths: list[Path],
+    ):
         process_start = time.perf_counter()
         timing = {}  # 记录各步骤耗时
 
@@ -762,7 +779,6 @@ class XiaohongshuMixin:
             return
 
         media_components: list[object] = []
-        media_paths: list[Path] = []
         image_paths: list[Path] = []
         cover_path: Path | None = None
         failed_images = 0
@@ -1086,10 +1102,6 @@ class XiaohongshuMixin:
             timing.get("send", 0),
             total_elapsed,
         )
-
-        # 发送完成后立即清理文件（Direct Send Pattern：此时文件已被读取）
-        if media_paths:
-            await self.cleanup_files(media_paths, [])
 
     # endregion
 

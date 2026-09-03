@@ -435,6 +435,63 @@ class TestSummaryModeHandlers(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"链接：{original_link}", first_component.text)
         self.assertNotIn("https://www.douyin.com/note/123456789", first_component.text)
 
+    async def test_process_douyin_cleans_media_when_send_fails(self):
+        event = DummyEvent()
+        event.send = AsyncMock(side_effect=RuntimeError("send failed"))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            video_path = Path(tmpdir) / "douyin.mp4"
+            video_path.write_bytes(b"video")
+
+            plugin = SimpleNamespace(
+                douyin_enabled=True,
+                douyin_summary_mode="文字摘要",
+                douyin_render_card=False,
+                douyin_merge_send=False,
+                douyin_max_media=99,
+                retry_count=0,
+                max_video_size_mb=200,
+                douyin_extractor=SimpleNamespace(
+                    parse=AsyncMock(
+                        return_value=DouyinResult(
+                            title="视频标题",
+                            author="作者甲",
+                            author_avatar=None,
+                            duration=10,
+                            video_url="https://example.com/video.mp4",
+                            cover_url=None,
+                            image_urls=[],
+                            dynamic_urls=[],
+                            source_url="https://www.douyin.com/video/123456789",
+                            likes=1,
+                            comments=2,
+                            item_id="123",
+                        )
+                    )
+                ),
+                _refresh_config=lambda: None,
+                _send_reaction_emoji=AsyncMock(),
+                _download_douyin_video=AsyncMock(return_value=video_path),
+                _render_douyin_card=AsyncMock(),
+                _prepare_component_for_merge_send=AsyncMock(
+                    side_effect=lambda component: component
+                ),
+                _get_merge_sender_uin=lambda event: "10001",
+                cleanup_files=AsyncMock(),
+            )
+            plugin._format_count = DouyinMixin._format_count.__get__(
+                plugin, DouyinMixin
+            )
+            plugin._build_douyin_summary = DouyinMixin._build_douyin_summary.__get__(
+                plugin, DouyinMixin
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "send failed"):
+                await DouyinMixin._process_douyin(
+                    plugin, event, "https://v.douyin.com/demo123/"
+                )
+
+        plugin.cleanup_files.assert_awaited_once_with([video_path], [])
+
     async def test_process_xhs_force_unmerge_sends_summary_before_images(self):
         event = DummyEvent()
         original_link = (
@@ -504,6 +561,61 @@ class TestSummaryModeHandlers(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("app_platform=android", results[0][0].text)
         self.assertNotIn("share_channel=qq", results[0][0].text)
         self.assertIsInstance(results[1][0], Image)
+
+    async def test_process_xhs_cleans_media_when_result_delivery_stops(self):
+        event = DummyEvent()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            image_path = Path(tmpdir) / "xhs.jpg"
+            image_path.write_bytes(b"image")
+
+            plugin = SimpleNamespace(
+                xhs_enabled=True,
+                xhs_summary_mode="文字摘要",
+                xhs_render_card=False,
+                xhs_merge_send=False,
+                xhs_max_media=99,
+                xhs_concurrent_download=False,
+                xhs_auto_unmerge_threshold_mb=0,
+                xhs_qq_image_size_limit_mb=0,
+                retry_count=0,
+                max_video_size_mb=200,
+                xhs_extractor=SimpleNamespace(
+                    parse=AsyncMock(
+                        return_value=XiaohongshuResult(
+                            title="小红书标题",
+                            author="作者乙",
+                            text="正文",
+                            image_urls=["https://example.com/xhs.jpg"],
+                            file_ids=[],
+                            video_url=None,
+                            cover_url=None,
+                            source_url="https://www.xiaohongshu.com/explore/abc123",
+                            note_id="abc123",
+                        )
+                    )
+                ),
+                _refresh_config=lambda: None,
+                _send_reaction_emoji=AsyncMock(),
+                _download_xhs_image=AsyncMock(return_value=image_path),
+                _download_xhs_video=AsyncMock(),
+                _render_xhs_card=AsyncMock(),
+                _prepare_component_for_merge_send=AsyncMock(
+                    side_effect=lambda component: component
+                ),
+                _get_merge_sender_uin=lambda event: "10001",
+                cleanup_files=AsyncMock(),
+            )
+            plugin._build_xhs_summary = XiaohongshuMixin._build_xhs_summary.__get__(
+                plugin, XiaohongshuMixin
+            )
+
+            results = XiaohongshuMixin._process_xhs(
+                plugin, event, "https://www.xiaohongshu.com/discovery/item/abc123"
+            )
+            await anext(results)
+            await results.aclose()
+
+        plugin.cleanup_files.assert_awaited_once_with([image_path], [])
 
     async def test_process_bili_single_page_merge_send_uses_plain_summary_node(self):
         event = DummyEvent()
@@ -583,6 +695,7 @@ class TestSummaryModeHandlers(unittest.IsolatedAsyncioTestCase):
                 )
 
         plugin._render_bili_card.assert_not_awaited()
+        plugin.cleanup_files.assert_awaited_once_with([video_path], [])
         self.assertEqual(len(event.sent), 1)
         nodes = event.sent[0].chain[0]
         first_component = nodes.nodes[0].content[0]

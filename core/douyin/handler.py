@@ -215,6 +215,7 @@ class DouyinMixin:
         comments: int | None,
         request_id: str,
     ) -> Path | None:
+        cover_path: Path | None = None
         try:
             cover_path = (
                 await self._download_douyin_cover(cover_url, request_id)
@@ -247,10 +248,29 @@ class DouyinMixin:
         except Exception as exc:
             logger.warning("⚠️ 抖音卡片渲染失败: %s", str(exc))
             return None
+        finally:
+            if cover_path:
+                await asyncio.to_thread(cover_path.unlink, missing_ok=True)
 
     # region 抖音处理
     async def _process_douyin(
         self, event: AstrMessageEvent, target_link: str, is_from_card: bool = False
+    ):
+        media_paths: list[Path] = []
+        try:
+            await DouyinMixin._process_douyin_inner(
+                self, event, target_link, is_from_card, media_paths
+            )
+        finally:
+            if media_paths:
+                await self.cleanup_files(media_paths, [])
+
+    async def _process_douyin_inner(
+        self,
+        event: AstrMessageEvent,
+        target_link: str,
+        is_from_card: bool,
+        media_paths: list[Path],
     ):
         process_start = time.perf_counter()
         timing = {}  # 记录各步骤耗时
@@ -366,7 +386,6 @@ class DouyinMixin:
             return
 
         media_components: list[object] = []
-        media_paths: list[Path] = []
         failed_images = 0
         failed_dynamics = 0
 
@@ -537,6 +556,8 @@ class DouyinMixin:
                 comments=result.comments,
                 request_id=request_id,
             )
+            if card_path:
+                media_paths.append(card_path)
         timing["render"] = time.perf_counter() - render_start
         # endregion
 
@@ -594,9 +615,6 @@ class DouyinMixin:
             timing.get("send", 0),
             total_elapsed,
         )
-        # 发送完成后立即清理文件（Direct Send Pattern：此时文件已被读取）
-        if media_paths:
-            await self.cleanup_files(media_paths, [])
 
     # endregion
 
