@@ -264,6 +264,7 @@ OpenMoji-black-glyf.ttf
 - [astrbot_plugin_parser](https://github.com/Zhalslar/astrbot_plugin_parser)
 - [XHS-Downloader](https://github.com/JoeanAmier/XHS-Downloader) — 小红书图片下载参考实现
 - [Johnserf-Seed/f2](https://github.com/Johnserf-Seed/f2) — 抖音游客请求签名、微博详情接口与访客 Cookie 参考实现
+- [Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API) - 抖音 WebSign 参考实现
 - [dataabc/weibo-crawler](https://github.com/dataabc/weibo-crawler) — 微博原图/视频字段与公开抓取思路参考
 
 ---

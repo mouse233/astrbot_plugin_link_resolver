@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import msgspec
+
 from astrbot.api import logger
 
 from .errors import DouyinParseError
@@ -285,7 +286,7 @@ class DouyinExtractor:
             or []
         )
         if not items:
-            item = await self.guest_api.fetch_detail(video_id)
+            item = await self.guest_api.fetch_detail(video_id, source_url=source_url)
         else:
             item = items[0] or {}
 

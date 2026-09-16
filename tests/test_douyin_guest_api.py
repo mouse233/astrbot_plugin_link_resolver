@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 import json
 import sys
 import types
@@ -24,14 +25,62 @@ from astrbot_plugin_link_resolver.core.douyin import DouyinExtractor
 from astrbot_plugin_link_resolver.core.douyin.errors import DouyinParseError
 from astrbot_plugin_link_resolver.core.douyin.guest_api import (
     DouyinGuestAPI,
+    GuestRequest,
     GuestSession,
 )
+from astrbot_plugin_link_resolver.core.douyin.websign import sign
+
+
+def test_websign_matches_known_sdk_fixture():
+    signed = sign(
+        "aweme_id=123&uifid=guest&a_bogus=A%2BB%2F%3D",
+        "guest",
+        timestamp=1_700_000_000,
+    )
+
+    assert signed.timestamp == "1700000000"
+    assert signed.signature == "d6ffd103bb2de29134a9e15755c2d5c4"
+    assert signed.query == (
+        "aweme_id=123&uifid=guest&a_bogus=A%2BB%2F%3D"
+        "&timestamp=1700000000"
+        "&x-secsdk-web-signature=d6ffd103bb2de29134a9e15755c2d5c4"
+    )
+
+
+@pytest.mark.asyncio
+async def test_guest_api_bootstraps_server_issued_anonymous_identity(monkeypatch):
+    requested_urls = []
+
+    class FakeClient:
+        def __init__(self, **_kwargs):
+            self.cookies = httpx.Cookies()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url):
+            requested_urls.append(url)
+            self.cookies.set("ttwid", "guest-ttwid", domain=".douyin.com")
+            self.cookies.set("UIFID_TEMP", "guest-uifid", domain=".douyin.com")
+            return httpx.Response(200, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+
+    session = await DouyinGuestAPI()._create_session()
+
+    assert requested_urls == ["https://live.douyin.com/"]
+    assert session == GuestSession(ttwid="guest-ttwid", uifid="guest-uifid")
 
 
 @pytest.mark.asyncio
 async def test_guest_api_refreshes_session_after_empty_response(monkeypatch):
     api = DouyinGuestAPI()
-    sessions = iter([GuestSession("old", "old-fp"), GuestSession("new", "new-fp")])
+    sessions = iter(
+        [GuestSession("old", "old-uifid"), GuestSession("new", "new-uifid")]
+    )
     created = []
 
     async def fake_create_session():
@@ -39,8 +88,11 @@ async def test_guest_api_refreshes_session_after_empty_response(monkeypatch):
         created.append(session)
         return session
 
-    async def fake_build_endpoint(_aweme_id):
-        return "https://example.test/detail"
+    async def fake_build_request(_aweme_id, session, _source_url):
+        return GuestRequest(
+            endpoint="https://example.test/detail",
+            headers={"uifid": session.uifid},
+        )
 
     responses = iter(
         [
@@ -53,7 +105,7 @@ async def test_guest_api_refreshes_session_after_empty_response(monkeypatch):
         return next(responses)
 
     monkeypatch.setattr(api, "_create_session", fake_create_session)
-    monkeypatch.setattr(api, "_build_endpoint", fake_build_endpoint)
+    monkeypatch.setattr(api, "_build_request", fake_build_request)
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
 
     detail = await api.fetch_detail("123")
@@ -82,8 +134,38 @@ async def test_guest_api_wraps_network_error_for_share_page_fallback(monkeypatch
 
 
 def test_guest_cookie_contains_only_guest_identifiers():
-    session = GuestSession("guest-ttwid", "verify_guest")
-    assert session.cookie == "ttwid=guest-ttwid; s_v_web_id=verify_guest;"
+    session = GuestSession("guest-ttwid", "guest-uifid")
+    assert session.cookie == "ttwid=guest-ttwid; UIFID_TEMP=guest-uifid;"
+
+
+@pytest.mark.asyncio
+async def test_guest_request_contains_uifid_and_websign(monkeypatch):
+    api = DouyinGuestAPI()
+    session = GuestSession("guest-ttwid", "guest-uifid")
+
+    monkeypatch.setattr(
+        "astrbot_plugin_link_resolver.core.douyin.websign.time",
+        lambda: 1_700_000_000,
+    )
+
+    request = await api._build_request(
+        "7684636895083644273",
+        session,
+        "https://www.douyin.com/note/7684636895083644273",
+    )
+
+    parsed = httpx.URL(request.endpoint)
+    params = dict(parsed.params.multi_items())
+    assert params["aweme_id"] == "7684636895083644273"
+    assert params["uifid"] == "guest-uifid"
+    assert params["timestamp"] == "1700000000"
+    assert params["x-secsdk-web-signature"]
+    assert request.headers == {
+        "Referer": "https://www.douyin.com/note/7684636895083644273",
+        "uifid": "guest-uifid",
+        "x-secsdk-web-signature": params["x-secsdk-web-signature"],
+        "x-secsdk-web-expire": "1700000000",
+    }
 
 
 def test_video_url_prefers_douyin_play_endpoint():

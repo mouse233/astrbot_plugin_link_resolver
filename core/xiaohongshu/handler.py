@@ -18,6 +18,7 @@ from ..common import (
     get_xhs_image_path,
     get_xhs_video_path,
 )
+from ..common.file_lifecycle import save_image_file
 from . import (
     XHS_HEADERS,
     XiaohongshuParseError,
@@ -641,7 +642,7 @@ class XiaohongshuMixin:
                 cover_path=cover_path,
                 is_video=is_video,
             )
-            await asyncio.to_thread(image.save, card_path, format="PNG")
+            await save_image_file(image, card_path, format="PNG")
             return card_path
         except asyncio.CancelledError:
             raise
@@ -654,6 +655,23 @@ class XiaohongshuMixin:
     # region 小红书处理
     async def _process_xhs(
         self, event: AstrMessageEvent, target_link: str, is_from_card: bool = False
+    ):
+        media_paths: list[Path] = []
+        try:
+            async for result in XiaohongshuMixin._process_xhs_inner(
+                self, event, target_link, is_from_card, media_paths
+            ):
+                yield result
+        finally:
+            if media_paths:
+                await self.cleanup_files(media_paths, [])
+
+    async def _process_xhs_inner(
+        self,
+        event: AstrMessageEvent,
+        target_link: str,
+        is_from_card: bool,
+        media_paths: list[Path],
     ):
         process_start = time.perf_counter()
         timing = {}  # 记录各步骤耗时
@@ -762,7 +780,6 @@ class XiaohongshuMixin:
             return
 
         media_components: list[object] = []
-        media_paths: list[Path] = []
         image_paths: list[Path] = []
         cover_path: Path | None = None
         failed_images = 0
@@ -842,6 +859,7 @@ class XiaohongshuMixin:
                             file_id=file_id,
                             referer=result.source_url,
                         )
+                        media_paths.append(path)
                         return (i, path, None)
                     except asyncio.CancelledError:
                         raise
@@ -855,7 +873,6 @@ class XiaohongshuMixin:
                 for i, path, exc in dl_results:
                     if path is not None:
                         image_paths.append(path)
-                        media_paths.append(path)
                         media_components.append(
                             Image.fromFileSystem(str(path.resolve()))
                         )
@@ -1086,10 +1103,6 @@ class XiaohongshuMixin:
             timing.get("send", 0),
             total_elapsed,
         )
-
-        # 发送完成后立即清理文件（Direct Send Pattern：此时文件已被读取）
-        if media_paths:
-            await self.cleanup_files(media_paths, [])
 
     # endregion
 
