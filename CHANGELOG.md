@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.0.13
+
+### 新增
+
+- 支持 YouTube 链接解析与视频下载
+- 支持 YouTube 分辨率、视频编码、时长限制和 Netscape Cookies 配置
+
+### 优化
+
+- 精简 YouTube 配置提示，补充使用说明与 yt-dlp 致谢
+
 ## v1.0.12
 
 ### 优化

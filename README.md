@@ -15,6 +15,7 @@
 - 🚦 **群过滤(黑/白名单)**：按群号控制哪些群启用解析，私聊不受影响
 - 🐦 **微博解析**：支持单条微博正文、图片、视频，默认原图优先
 - 𝕏 **X 解析**：支持 `twitter.com` / `x.com` 推文图片和视频解析
+- ▶️ **YouTube 视频解析**：基于 yt-dlp 下载可用视频流，支持分辨率、编码和时长限制
 - 🧾 **摘要模式**：B站、抖音和小红书支持文字摘要或渲染卡片
 - 🔤 **字体管理**：支持自定义字体，也可按需安装托管字体
 
@@ -134,19 +135,17 @@ ffmpeg -version
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `youtube_settings.cookies` | 可选。完整 Netscape `cookies.txt` 文本；用于年龄限制、需登录等内容 | 空 |
-| `youtube_settings.max_height` | 最高下载分辨率：原画、8K、4K、1080P、720P、480P、360P、240P 或 144P | `720P` |
+| `youtube_settings.cookies` | 可选。完整 Netscape `cookies.txt` 文本，用于需登录内容 | 空 |
+| `youtube_settings.max_height` | 最高下载分辨率：原画、8K、4K、1080P、720P、480P、360P、240P 或 144P | `1080P` |
 | `youtube_settings.max_duration_seconds` | 最大视频时长(秒)，超过即忽略 | `300` |
 | `youtube_settings.video_codec` | 优先视频编码：`H.264`（兼容桌面 QQ，推荐）或 `AV1`（体积通常更小） | `H.264` |
 | `youtube_settings.player_client` | yt-dlp 请求客户端：`default` 或 `web_embedded` | `default` |
 
-当默认客户端下载媒体流返回 HTTP 403 时，插件会只用 `web_embedded` 兼容客户端回退一次，不会使用相同参数机械重试。若仍失败，请更新 yt-dlp，并检查 Cookies 是否有效或出口 IP 是否被限制。`web_embedded` 只能解析允许嵌入的视频。
+媒体流遇到 HTTP 403 时，插件会回退一次到 `web_embedded`。仍失败时，请重载插件以更新依赖，并检查 Cookie 和出口 IP；该客户端仅适用于可嵌入视频。
 
 ### YouTube Cookies（可选）
 
-在 `youtube_settings.cookies` 直接粘贴浏览器扩展导出的**完整 Netscape 格式** `cookies.txt` 内容即可。插件会将它写入插件数据目录的 `cookies/youtube_cookies.txt`，再以文件形式传给 yt-dlp。不要粘贴开发者工具中 `SID=...; HSID=...` 这种单行请求头。
-
-请导出 `.youtube.com` 的全部 Cookie，不要手动只保留几个字段。yt-dlp 会根据 Cookie 的域名、路径、是否 HTTPS、过期时间和名称自动选取请求所需条目；YouTube 的最小登录字段并不稳定。Cookie 仅提供账号登录态，不能绕过账号本身没有的观看权限。
+将浏览器扩展导出的 `.youtube.com` **完整 Netscape `cookies.txt`** 原样粘贴到 `youtube_settings.cookies`。不要粘贴 `SID=...; HSID=...` 这类单行请求头，也不要手动删减字段。
 
 
 ---
@@ -163,6 +162,7 @@ ffmpeg -version
 - `weibo.cn/<mblogid>`
 - `twitter.com/<user>/status/<id>`
 - `x.com/<user>/status/<id>`
+- `youtube.com/watch?v=<id>`、`youtu.be/<id>`、`youtube.com/shorts/<id>`
 
 抖音动图和小红书 Live Photo 会同时发送静态图片与对应的动态视频。实际消息形式取决于平台内容和消息适配器支持情况。
 
@@ -192,6 +192,7 @@ astrbot_plugin_link_resolver/
 │   ├── twitter/         # X/Twitter解析
 │   ├── weibo/           # 微博解析
 │   ├── xiaohongshu/     # 小红书解析
+│   ├── youtube/         # YouTube 解析
 │   └── common/          # 公共工具
 └── tests/               # 测试
 
@@ -280,6 +281,7 @@ OpenMoji-black-glyf.ttf
 ## 🙏 致谢
 
 - [astrbot_plugin_parser](https://github.com/Zhalslar/astrbot_plugin_parser)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — YouTube 视频信息提取与下载
 - [XHS-Downloader](https://github.com/JoeanAmier/XHS-Downloader) — 小红书图片下载参考实现
 - [Johnserf-Seed/f2](https://github.com/Johnserf-Seed/f2) — 抖音游客请求签名、微博详情接口与访客 Cookie 参考实现
 - [Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API) - 抖音 WebSign 参考实现

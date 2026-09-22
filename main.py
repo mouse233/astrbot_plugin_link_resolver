@@ -58,7 +58,7 @@ SUMMARY_MODE_CARD = "渲染卡片"
     "astrbot_plugin_link_resolver",
     "acacia",
     "解析 & 下载 Bilibili/抖音/小红书/微博/X/YouTube",
-    "1.0.15",
+    "1.0.12",
 )
 class LinkResolverPlugin(
     BilibiliMixin, DouyinMixin, XiaohongshuMixin, WeiboMixin, TwitterMixin, YoutubeMixin, Star
@@ -242,7 +242,7 @@ class LinkResolverPlugin(
 
         # YouTube 配置
         _youtube_height = str(
-            self._get_config_value("youtube_settings.max_height", "720P")
+            self._get_config_value("youtube_settings.max_height", "1080P")
         ).strip().upper()
         youtube_height_options = {
             "原画 (最高画质)": 0,
