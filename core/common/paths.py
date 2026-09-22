@@ -63,6 +63,11 @@ def get_bili_cookies_file() -> Path:
     return get_cookies_path() / "bili_cookies.txt"
 
 
+def get_youtube_cookies_file() -> Path:
+    """获取由配置面板写入的 YouTube Cookies 文件路径。"""
+    return get_cookies_path() / "youtube_cookies.txt"
+
+
 # Bilibili 路径
 def get_bilibili_cache() -> Path:
     return _ensure_dir(get_cache_path() / "bilibili")

@@ -12,7 +12,13 @@ from astrbot.api.event import AstrMessageEvent, MessageChain
 from astrbot.api.message_components import Node, Nodes, Plain, Video
 
 from ..common import SizeLimitExceeded, get_youtube_video_path
-from . import YoutubeDownloadError, YoutubeParseError, YoutubeResult, extract_youtube_links
+from . import (
+    YoutubeDownloadError,
+    YoutubeParseError,
+    YoutubeResult,
+    extract_youtube_links,
+    is_youtube_403_error,
+)
 
 
 class YoutubeMixin:
@@ -27,12 +33,32 @@ class YoutubeMixin:
         lines.append(f"链接: {result.source_url}")
         return "\n".join(lines)
 
-    async def _download_youtube_video(self, url: str, request_id: str) -> tuple[YoutubeResult, Path]:
-        max_bytes = self.max_video_size_mb * 1024 * 1024 if self.max_video_size_mb > 0 else None
+    async def _download_youtube_video(
+        self, url: str, request_id: str, player_client: str
+    ) -> tuple[YoutubeResult, Path]:
+        max_bytes = (
+            self.max_video_size_mb * 1024 * 1024
+            if self.max_video_size_mb > 0
+            else None
+        )
         return await self.youtube_extractor.download(
-            url, get_youtube_video_path(), request_id,
-            max_height=self.youtube_max_height, max_bytes=max_bytes,
+            url,
+            get_youtube_video_path(),
+            request_id,
+            max_height=self.youtube_max_height,
+            video_codec=self.youtube_video_codec,
+            max_bytes=max_bytes,
             cookie_file=self.youtube_cookies_file or None,
+            player_client=player_client,
+        )
+
+    async def _inspect_youtube_video(
+        self, target_link: str, player_client: str
+    ) -> YoutubeResult:
+        return await self.youtube_extractor.inspect(
+            target_link,
+            cookie_file=self.youtube_cookies_file or None,
+            player_client=player_client,
         )
 
     async def _process_youtube(self, event: AstrMessageEvent, target_link: str, is_from_card: bool = False) -> None:
@@ -48,13 +74,26 @@ class YoutubeMixin:
         video_path: Path | None = None
         last_error: str | None = None
         request_id = uuid.uuid4().hex[:8]
+        active_client = self.youtube_player_client
+        fallback_attempted = active_client == "web_embedded"
         for attempt in range(self.retry_count + 1):
             try:
-                preview = await self.youtube_extractor.inspect(target_link, cookie_file=self.youtube_cookies_file or None)
-                if self.youtube_max_duration_seconds > 0 and preview.duration is not None and preview.duration > self.youtube_max_duration_seconds:
-                    logger.warning("⚠️ YouTube 视频时长超过限制%s: %ss > %ss", source_tag, preview.duration, self.youtube_max_duration_seconds)
+                preview = await self._inspect_youtube_video(target_link, active_client)
+                if (
+                    self.youtube_max_duration_seconds > 0
+                    and preview.duration is not None
+                    and preview.duration > self.youtube_max_duration_seconds
+                ):
+                    logger.warning(
+                        "⚠️ YouTube 视频时长超过限制%s: %ss > %ss",
+                        source_tag,
+                        preview.duration,
+                        self.youtube_max_duration_seconds,
+                    )
                     return
-                result, video_path = await self._download_youtube_video(target_link, request_id)
+                result, video_path = await self._download_youtube_video(
+                    target_link, request_id, active_client
+                )
                 break
             except asyncio.CancelledError:
                 logger.info("♻️ YouTube 解析任务已中断%s", source_tag)
@@ -63,6 +102,25 @@ class YoutubeMixin:
                 last_error = str(exc)
             except Exception as exc:
                 last_error = str(exc)
+
+            if is_youtube_403_error(last_error):
+                if not fallback_attempted:
+                    fallback_attempted = True
+                    active_client = "web_embedded"
+                    logger.warning(
+                        "⚠️ YouTube 媒体流被拒绝%s，改用兼容客户端 "
+                        "web_embedded 重试一次",
+                        source_tag,
+                    )
+                    continue
+                logger.error(
+                    "❌ YouTube 媒体流被拒绝%s: %s。请更新 yt-dlp、"
+                    "检查 Cookies 是否有效或检查出口 IP。",
+                    source_tag,
+                    last_error,
+                )
+                break
+
             if attempt < self.retry_count:
                 logger.warning("⚠️ YouTube 处理失败%s: %s，重试 %d/%d", source_tag, last_error, attempt + 1, self.retry_count)
                 await asyncio.sleep(1.0)

@@ -179,19 +179,38 @@
         "items": {
             "max_height": {
                 "description": "最高下载分辨率",
-                "type": "int",
-                "hint": "优先下载不超过此高度的单文件视频。设为 0 表示不限；仍会受到通用视频大小限制约束。",
-                "default": 720,
-                "min": 0,
-                "max": 2160
+                "type": "string",
+                "hint": "选择视频高度上限。插件会优先下载不超过该高度的最高可用清晰度，不会重新编码；视频实际可用画质取决于 YouTube 提供的流。原画表示不设高度上限，仍会受到通用视频大小限制约束。",
+                "default": "720P",
+                "options": [
+                    "原画 (最高画质)",
+                    "8K",
+                    "4K",
+                    "1080P",
+                    "720P",
+                    "480P",
+                    "360P",
+                    "240P",
+                    "144P"
+                ]
             },
             "max_duration_seconds": {
                 "description": "最大视频时长(秒)",
                 "type": "int",
                 "hint": "视频时长超过此值时不下载。设为 0 表示不限制。",
-                "default": 1800,
+                "default": 300,
                 "min": 0,
                 "max": 86400
+            },
+            "video_codec": {
+                "description": "优先视频编码",
+                "type": "string",
+                "hint": "H.264 兼容桌面 QQ 等播放器，推荐默认使用；AV1 通常文件更小，但部分电脑播放器无法播放。没有目标编码流时会自动回退到可用的 MP4 视频流。",
+                "default": "H.264",
+                "options": [
+                    "H.264",
+                    "AV1"
+                ]
             },
             "merge_send": {
                 "description": "YouTube 合并发送",
@@ -199,11 +218,21 @@
                 "hint": "开启后将视频标题、作者和视频合并转发；关闭则仅发送视频。",
                 "default": false
             },
-            "cookies_file": {
-                "description": "YouTube Cookies 文件",
+            "cookies": {
+                "description": "YouTube Cookies",
                 "type": "string",
-                "hint": "可选。Netscape 格式 cookies.txt 的绝对路径，用于受年龄或登录状态限制的视频。不要填写浏览器 Cookie 文本。",
+                "hint": "可选。粘贴浏览器扩展导出的完整 Netscape cookies.txt 内容，用于受年龄或登录状态限制的视频。不要粘贴 k=v;... 形式的请求头 Cookie。",
                 "default": ""
+            },
+            "player_client": {
+                "description": "YouTube 请求客户端",
+                "type": "string",
+                "hint": "默认：让 yt-dlp 自动选择。web_embedded：仅在 403 时由插件自动回退使用，也可手动固定；只能解析允许嵌入的视频。",
+                "default": "default",
+                "options": [
+                    "default",
+                    "web_embedded"
+                ]
             }
         }
     },

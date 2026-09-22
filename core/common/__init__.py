@@ -7,6 +7,7 @@ __all__ = [
     "get_cookies_path",
     "get_fonts_path",
     "get_bili_cookies_file",
+    "get_youtube_cookies_file",
     "get_bilibili_video_path",
     "get_bilibili_thumb_path",
     "get_bilibili_card_path",
@@ -27,6 +28,7 @@ from .exceptions import SizeLimitExceeded
 from .paths import (
     PLUGIN_NAME,
     get_bili_cookies_file,
+    get_youtube_cookies_file,
     get_bilibili_card_path,
     get_bilibili_thumb_path,
     get_bilibili_video_path,

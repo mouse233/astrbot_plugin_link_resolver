@@ -25,6 +25,13 @@ class YoutubeDownloadError(RuntimeError):
     """yt-dlp could not inspect or download the video."""
 
 
+def is_youtube_403_error(exc: BaseException | str) -> bool:
+    """Whether YouTube denied a media-stream request from yt-dlp."""
+
+    text = str(exc).lower()
+    return "http error 403" in text or "403: forbidden" in text
+
+
 @dataclass(slots=True)
 class YoutubeResult:
     video_id: str
@@ -100,21 +107,60 @@ class YoutubeExtractor:
             filesize=self._integer(info.get("filesize") or info.get("filesize_approx")),
         )
 
-    def _base_options(self, cookie_file: str | None) -> dict[str, Any]:
-        options: dict[str, Any] = {"noplaylist": True, "quiet": True, "no_warnings": True, "socket_timeout": self.timeout, "http_headers": {"User-Agent": "Mozilla/5.0"}}
+    def _base_options(
+        self,
+        cookie_file: str | None,
+        *,
+        player_client: str | None = None,
+    ) -> dict[str, Any]:
+        options: dict[str, Any] = {
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+            "socket_timeout": self.timeout,
+        }
         if cookie_file:
             path = Path(cookie_file).expanduser()
             if not path.is_file():
                 raise YoutubeDownloadError(f"YouTube Cookie 文件不存在: {path}")
             options["cookiefile"] = str(path)
+
+        youtube_args: dict[str, list[str]] = {}
+        if player_client and player_client != "default":
+            youtube_args["player_client"] = [player_client]
+        if youtube_args:
+            options["extractor_args"] = {"youtube": youtube_args}
         return options
 
-    async def inspect(self, url: str, cookie_file: str | None = None) -> YoutubeResult:
-        return await asyncio.to_thread(self._inspect_sync, self._validate_url(url), cookie_file)
+    async def inspect(
+        self,
+        url: str,
+        cookie_file: str | None = None,
+        *,
+        player_client: str | None = None,
+    ) -> YoutubeResult:
+        return await asyncio.to_thread(
+            self._inspect_sync,
+            self._validate_url(url),
+            cookie_file,
+            player_client,
+        )
 
-    def _inspect_sync(self, url: str, cookie_file: str | None) -> YoutubeResult:
+    def _inspect_sync(
+        self,
+        url: str,
+        cookie_file: str | None,
+        player_client: str | None,
+    ) -> YoutubeResult:
         try:
-            with _get_yt_dlp_class()({**self._base_options(cookie_file), "skip_download": True}) as ydl:
+            options = {
+                **self._base_options(
+                    cookie_file,
+                    player_client=player_client,
+                ),
+                "skip_download": True,
+            }
+            with _get_yt_dlp_class()(options) as ydl:
                 info = ydl.extract_info(url, download=False)
         except (YoutubeParseError, YoutubeDownloadError):
             raise
@@ -124,20 +170,57 @@ class YoutubeExtractor:
             raise YoutubeParseError("yt-dlp 返回的信息格式异常")
         return self._result_from_info(info, url)
 
-    async def download(self, url: str, output_dir: Path, request_id: str, *, max_height: int = 720, max_bytes: int | None = None, cookie_file: str | None = None) -> tuple[YoutubeResult, Path]:
-        return await asyncio.to_thread(self._download_sync, self._validate_url(url), output_dir, request_id, max_height, max_bytes, cookie_file)
+    async def download(
+        self,
+        url: str,
+        output_dir: Path,
+        request_id: str,
+        *,
+        max_height: int = 720,
+        video_codec: str = "h264",
+        max_bytes: int | None = None,
+        cookie_file: str | None = None,
+        player_client: str | None = None,
+    ) -> tuple[YoutubeResult, Path]:
+        return await asyncio.to_thread(
+            self._download_sync,
+            self._validate_url(url),
+            output_dir,
+            request_id,
+            max_height,
+            video_codec,
+            max_bytes,
+            cookie_file,
+            player_client,
+        )
 
-    def _download_sync(self, url: str, output_dir: Path, request_id: str, max_height: int, max_bytes: int | None, cookie_file: str | None) -> tuple[YoutubeResult, Path]:
+    def _download_sync(
+        self,
+        url: str,
+        output_dir: Path,
+        request_id: str,
+        max_height: int,
+        video_codec: str,
+        max_bytes: int | None,
+        cookie_file: str | None,
+        player_client: str | None,
+    ) -> tuple[YoutubeResult, Path]:
         output_dir.mkdir(parents=True, exist_ok=True)
-        # Prefer a progressive single-file stream so ffmpeg is not mandatory.
-        height = f"[height<={max_height}]" if max_height > 0 else ""
-        if shutil.which("ffmpeg"):
-            format_selector = f"bv*[ext=mp4]{height}+ba[ext=m4a]/b[ext=mp4]{height}/bv*[ext=mp4]{height}/best{height}"
-        else:
-            # YouTube commonly exposes DASH-only streams. Without ffmpeg, keep
-            # a playable MP4 video rather than failing every such download.
-            format_selector = f"bv*[ext=mp4]{height}/best{height}"
-        options = {**self._base_options(cookie_file), "format": format_selector, "outtmpl": str(output_dir / f"%(id)s_{request_id}.%(ext)s"), "max_filesize": max_bytes, "overwrites": False}
+        format_selector = self._build_format_selector(
+            max_height=max_height,
+            video_codec=video_codec,
+            ffmpeg_available=bool(shutil.which("ffmpeg")),
+        )
+        options = {
+            **self._base_options(
+                cookie_file,
+                player_client=player_client,
+            ),
+            "format": format_selector,
+            "outtmpl": str(output_dir / f"%(id)s_{request_id}.%(ext)s"),
+            "max_filesize": max_bytes,
+            "overwrites": False,
+        }
         try:
             with _get_yt_dlp_class()(options) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -159,3 +242,23 @@ class YoutubeExtractor:
             output_path.unlink(missing_ok=True)
             raise YoutubeDownloadError("下载后的视频超过大小限制")
         return result, output_path
+
+    @staticmethod
+    def _build_format_selector(
+        *, max_height: int, video_codec: str, ffmpeg_available: bool
+    ) -> str:
+        """Prefer the requested codec, then retain a usable MP4 fallback."""
+
+        height = f"[height<={max_height}]" if max_height > 0 else ""
+        codec_filter = "[vcodec^=av01]" if video_codec == "av1" else "[vcodec^=avc1]"
+        preferred_video = f"bv*{codec_filter}[ext=mp4]{height}"
+        fallback_video = f"bv*[ext=mp4]{height}"
+        if ffmpeg_available:
+            return (
+                f"{preferred_video}+ba[ext=m4a]/b{codec_filter}[ext=mp4]{height}"
+                f"/{preferred_video}/{fallback_video}+ba[ext=m4a]"
+                f"/b[ext=mp4]{height}/{fallback_video}/best{height}"
+            )
+        # DASH video and audio cannot be muxed without ffmpeg. Keep the
+        # existing video-only fallback rather than downloading a second audio file.
+        return f"{preferred_video}/b{codec_filter}[ext=mp4]{height}/{fallback_video}/best{height}"

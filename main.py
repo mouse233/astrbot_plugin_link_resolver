@@ -16,7 +16,11 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 
 from .core.bilibili import BILI_MESSAGE_PATTERN, BilibiliMixin
-from .core.common import SizeLimitExceeded, get_bili_cookies_file
+from .core.common import (
+    SizeLimitExceeded,
+    get_bili_cookies_file,
+    get_youtube_cookies_file,
+)
 from .core.common.card_renderer import find_default_font, find_emoji_font
 from .core.common.font_manager import (
     get_managed_font_paths,
@@ -26,11 +30,11 @@ from .core.common.font_manager import (
     set_user_font_paths,
 )
 from .core.douyin import DOUYIN_MESSAGE_PATTERN, DouyinExtractor
-from .core.youtube import YOUTUBE_MESSAGE_PATTERN, YoutubeExtractor
-from .core.youtube.handler import YoutubeMixin
 from .core.douyin.handler import DouyinMixin
 from .core.twitter import TWITTER_MESSAGE_PATTERN, TwitterExtractor
 from .core.twitter.handler import TwitterMixin
+from .core.youtube import YOUTUBE_MESSAGE_PATTERN, YoutubeExtractor
+from .core.youtube.handler import YoutubeMixin
 from .core.weibo import WEIBO_MESSAGE_PATTERN, WeiboExtractor
 from .core.weibo.handler import WeiboMixin
 from .core.xiaohongshu import (
@@ -54,7 +58,7 @@ SUMMARY_MODE_CARD = "渲染卡片"
     "astrbot_plugin_link_resolver",
     "acacia",
     "解析 & 下载 Bilibili/抖音/小红书/微博/X/YouTube",
-    "1.0.13",
+    "1.0.15",
 )
 class LinkResolverPlugin(
     BilibiliMixin, DouyinMixin, XiaohongshuMixin, WeiboMixin, TwitterMixin, YoutubeMixin, Star
@@ -237,18 +241,67 @@ class LinkResolverPlugin(
         )
 
         # YouTube 配置
-        self.youtube_max_height = max(
-            0, int(self._get_config_value("youtube_settings.max_height", 720))
+        _youtube_height = str(
+            self._get_config_value("youtube_settings.max_height", "720P")
+        ).strip().upper()
+        youtube_height_options = {
+            "原画 (最高画质)": 0,
+            "8K": 4320,
+            "4K": 2160,
+            "1080P": 1080,
+            "720P": 720,
+            "480P": 480,
+            "360P": 360,
+            "240P": 240,
+            "144P": 144,
+        }
+        # Keep existing numeric configuration values working after switching
+        # this item from a number input to the quality menu.
+        legacy_youtube_height_options = {
+            "0": 0,
+            "144": 144,
+            "240": 240,
+            "360": 360,
+            "480": 480,
+            "720": 720,
+            "1080": 1080,
+            "2160": 2160,
+            "4320": 4320,
+        }
+        self.youtube_max_height = youtube_height_options.get(
+            _youtube_height,
+            legacy_youtube_height_options.get(_youtube_height, 720),
         )
         self.youtube_max_duration_seconds = max(
-            0, int(self._get_config_value("youtube_settings.max_duration_seconds", 1800))
+            0, int(self._get_config_value("youtube_settings.max_duration_seconds", 300))
         )
+        _youtube_codec = str(
+            self._get_config_value("youtube_settings.video_codec", "H.264")
+        ).strip().upper()
+        self.youtube_video_codec = "av1" if _youtube_codec == "AV1" else "h264"
         self.youtube_merge_send = bool(
             self._get_config_value("youtube_settings.merge_send", False)
         )
-        self.youtube_cookies_file = str(
-            self._get_config_value("youtube_settings.cookies_file", "")
+        self.youtube_cookies_file = None
+        youtube_cookies_text = str(
+            self._get_config_value("youtube_settings.cookies", "")
         ).strip()
+        if youtube_cookies_text:
+            try:
+                cookies_file = get_youtube_cookies_file()
+                cookies_file.write_text(youtube_cookies_text, encoding="utf-8")
+                self.youtube_cookies_file = str(cookies_file)
+                logger.info("🍪 YouTube Cookie 已从配置写入文件")
+            except Exception as exc:
+                logger.warning("⚠️ 写入 YouTube Cookie 文件失败: %s", str(exc))
+        _youtube_client = str(
+            self._get_config_value("youtube_settings.player_client", "default")
+        ).strip()
+        self.youtube_player_client = (
+            _youtube_client
+            if _youtube_client in {"default", "web_embedded"}
+            else "default"
+        )
 
         # 小红书配置
         self.xhs_max_media = max(
@@ -349,7 +402,7 @@ class LinkResolverPlugin(
             else "关闭"
         )
         logger.info(
-            "📹 LinkResolver 配置: 平台=%s, B站(画质=%s,合并=%s,摘要=%s,时长<=%s), 抖音(合并=%s,摘要=%s), 小红书(原图=%s,摘要=%s,大图转文件=%s), 微博(原图=%s,合并=%s,Cookie=%s), X(合并=%s,最多=%d), YouTube(最高=%sp,时长<=%ss,合并=%s), 字体(自动安装=%s,主字体=%s,Emoji=%s), 重试=%d",
+            "📹 LinkResolver 配置: 平台=%s, B站(画质=%s,合并=%s,摘要=%s,时长<=%s), 抖音(合并=%s,摘要=%s), 小红书(原图=%s,摘要=%s,大图转文件=%s), 微博(原图=%s,合并=%s,Cookie=%s), X(合并=%s,最多=%d), YouTube(最高=%sp,编码=%s,时长<=%ss,合并=%s), 字体(自动安装=%s,主字体=%s,Emoji=%s), 重试=%d",
             "/".join(enabled_list) if enabled_list else "无",
             self.video_quality.name,
             "开" if self.bili_merge_send else "关",
@@ -366,6 +419,7 @@ class LinkResolverPlugin(
             "开" if self.twitter_merge_send else "关",
             self.twitter_max_media,
             self.youtube_max_height or "不限",
+            "AV1" if self.youtube_video_codec == "av1" else "H.264",
             self.youtube_max_duration_seconds or "不限",
             "开" if self.youtube_merge_send else "关",
             "开" if self.font_auto_install_enabled else "关",

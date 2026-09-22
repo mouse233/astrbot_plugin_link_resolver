@@ -130,6 +130,24 @@ ffmpeg -version
 | `twitter_settings.max_media` | 单条推文最多发送媒体数 | 99 |
 | `twitter_settings.merge_send` | 单视频推文使用合并转发 | ❌ 关闭 |
 
+### YouTube 设置
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `youtube_settings.cookies` | 可选。完整 Netscape `cookies.txt` 文本；用于年龄限制、需登录等内容 | 空 |
+| `youtube_settings.max_height` | 最高下载分辨率：原画、8K、4K、1080P、720P、480P、360P、240P 或 144P | `720P` |
+| `youtube_settings.max_duration_seconds` | 最大视频时长(秒)，超过即忽略 | `300` |
+| `youtube_settings.video_codec` | 优先视频编码：`H.264`（兼容桌面 QQ，推荐）或 `AV1`（体积通常更小） | `H.264` |
+| `youtube_settings.player_client` | yt-dlp 请求客户端：`default` 或 `web_embedded` | `default` |
+
+当默认客户端下载媒体流返回 HTTP 403 时，插件会只用 `web_embedded` 兼容客户端回退一次，不会使用相同参数机械重试。若仍失败，请更新 yt-dlp，并检查 Cookies 是否有效或出口 IP 是否被限制。`web_embedded` 只能解析允许嵌入的视频。
+
+### YouTube Cookies（可选）
+
+在 `youtube_settings.cookies` 直接粘贴浏览器扩展导出的**完整 Netscape 格式** `cookies.txt` 内容即可。插件会将它写入插件数据目录的 `cookies/youtube_cookies.txt`，再以文件形式传给 yt-dlp。不要粘贴开发者工具中 `SID=...; HSID=...` 这种单行请求头。
+
+请导出 `.youtube.com` 的全部 Cookie，不要手动只保留几个字段。yt-dlp 会根据 Cookie 的域名、路径、是否 HTTPS、过期时间和名称自动选取请求所需条目；YouTube 的最小登录字段并不稳定。Cookie 仅提供账号登录态，不能绕过账号本身没有的观看权限。
+
 
 ---
 

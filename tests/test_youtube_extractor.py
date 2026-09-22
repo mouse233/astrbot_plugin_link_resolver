@@ -11,7 +11,12 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core"))
 
-from youtube import YoutubeExtractor, YoutubeParseError, extract_youtube_links
+from youtube import (
+    YoutubeExtractor,
+    YoutubeParseError,
+    extract_youtube_links,
+    is_youtube_403_error,
+)
 
 
 class FakeYoutubeDL:
@@ -69,6 +74,37 @@ class TestYoutubeExtractor(unittest.TestCase):
         with self.assertRaises(YoutubeParseError):
             YoutubeExtractor._validate_url("https://example.com/video")
 
+    def test_youtube_403_detection_is_specific_to_stream_denials(self):
+        self.assertTrue(
+            is_youtube_403_error("ERROR: unable to download video data: HTTP Error 403: Forbidden")
+        )
+        self.assertFalse(is_youtube_403_error("HTTP Error 429: Too Many Requests"))
+
+    def test_compatibility_client_is_forwarded_to_yt_dlp(self):
+        options = YoutubeExtractor()._base_options(
+            None,
+            player_client="web_embedded",
+        )
+        self.assertEqual(
+            options["extractor_args"],
+            {
+                "youtube": {
+                    "player_client": ["web_embedded"],
+                }
+            },
+        )
+
+    def test_netscape_cookie_file_is_forwarded_to_yt_dlp(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cookie_file = Path(directory) / "cookies.txt"
+            cookie_file.write_text(
+                "# Netscape HTTP Cookie File\n"
+                ".youtube.com\tTRUE\t/\tTRUE\t0\tSID\texample\n",
+                encoding="utf-8",
+            )
+            options = YoutubeExtractor()._base_options(str(cookie_file))
+            self.assertEqual(options["cookiefile"], str(cookie_file))
+
     def test_download_uses_limit_and_returns_media_file(self):
         with tempfile.TemporaryDirectory() as directory:
             with patch("youtube.extractor._get_yt_dlp_class", return_value=FakeYoutubeDL):
@@ -85,6 +121,26 @@ class TestYoutubeExtractor(unittest.TestCase):
         self.assertEqual(output.suffix, ".mp4")
         self.assertEqual(FakeYoutubeDL.options["max_filesize"], 1024)
         self.assertIn("format", FakeYoutubeDL.options)
+
+    def test_h264_selector_is_the_default_preference(self):
+        selector = YoutubeExtractor._build_format_selector(
+            max_height=720, video_codec="h264", ffmpeg_available=True
+        )
+        self.assertTrue(selector.startswith("bv*[vcodec^=avc1][ext=mp4][height<=720]"))
+        self.assertIn("+ba[ext=m4a]", selector)
+
+    def test_8k_height_limit_is_forwarded_to_the_format_selector(self):
+        selector = YoutubeExtractor._build_format_selector(
+            max_height=4320, video_codec="h264", ffmpeg_available=True
+        )
+        self.assertIn("[height<=4320]", selector)
+
+    def test_av1_selector_can_be_selected(self):
+        selector = YoutubeExtractor._build_format_selector(
+            max_height=720, video_codec="av1", ffmpeg_available=False
+        )
+        self.assertTrue(selector.startswith("bv*[vcodec^=av01][ext=mp4][height<=720]"))
+        self.assertNotIn("+ba[ext=m4a]", selector)
 
 
 if __name__ == "__main__":
