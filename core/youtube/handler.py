@@ -90,6 +90,7 @@ class YoutubeMixin:
                         preview.duration,
                         self.youtube_max_duration_seconds,
                     )
+                    event.set_result(event.plain_result("视频太长了你自己看去"))
                     return
                 result, video_path = await self._download_youtube_video(
                     target_link, request_id, active_client
