@@ -26,6 +26,8 @@ from .core.common.font_manager import (
     set_user_font_paths,
 )
 from .core.douyin import DOUYIN_MESSAGE_PATTERN, DouyinExtractor
+from .core.youtube import YOUTUBE_MESSAGE_PATTERN, YoutubeExtractor
+from .core.youtube.handler import YoutubeMixin
 from .core.douyin.handler import DouyinMixin
 from .core.twitter import TWITTER_MESSAGE_PATTERN, TwitterExtractor
 from .core.twitter.handler import TwitterMixin
@@ -51,11 +53,11 @@ SUMMARY_MODE_CARD = "渲染卡片"
 @register(
     "astrbot_plugin_link_resolver",
     "acacia",
-    "解析 & 下载 Bilibili/抖音/小红书/微博/X",
-    "1.0.12",
+    "解析 & 下载 Bilibili/抖音/小红书/微博/X/YouTube",
+    "1.0.13",
 )
 class LinkResolverPlugin(
-    BilibiliMixin, DouyinMixin, XiaohongshuMixin, WeiboMixin, TwitterMixin, Star
+    BilibiliMixin, DouyinMixin, XiaohongshuMixin, WeiboMixin, TwitterMixin, YoutubeMixin, Star
 ):
     def __init__(self, context: Context, config: AstrBotConfig | dict | None = None):
         super().__init__(context)
@@ -70,6 +72,7 @@ class LinkResolverPlugin(
         self.xhs_extractor = XiaohongshuExtractor()
         self.twitter_extractor = TwitterExtractor()
         self.font_auto_install_enabled = False
+        self.youtube_extractor = YoutubeExtractor()
         self.custom_primary_font_path: str | None = None
         self.custom_emoji_font_path: str | None = None
         self.user_primary_font_ready = False
@@ -136,15 +139,16 @@ class LinkResolverPlugin(
 
         # 平台启用列表
         enable_platforms = self._get_config_value(
-            "enable_platforms", ["B站", "抖音", "小红书", "微博", "X"]
+            "enable_platforms", ["B站", "抖音", "小红书", "微博", "X", "YouTube"]
         )
         if not isinstance(enable_platforms, list):
-            enable_platforms = ["B站", "抖音", "小红书", "微博", "X"]
+            enable_platforms = ["B站", "抖音", "小红书", "微博", "X", "YouTube"]
         self.bili_enabled = "B站" in enable_platforms
         self.douyin_enabled = "抖音" in enable_platforms
         self.xhs_enabled = "小红书" in enable_platforms
         self.weibo_enabled = "微博" in enable_platforms
         self.twitter_enabled = "X" in enable_platforms
+        self.youtube_enabled = "YouTube" in enable_platforms
 
         # B站配置
         self.quality_label = str(
@@ -232,6 +236,20 @@ class LinkResolverPlugin(
             self._get_config_value("twitter_settings.merge_send", False)
         )
 
+        # YouTube 配置
+        self.youtube_max_height = max(
+            0, int(self._get_config_value("youtube_settings.max_height", 720))
+        )
+        self.youtube_max_duration_seconds = max(
+            0, int(self._get_config_value("youtube_settings.max_duration_seconds", 1800))
+        )
+        self.youtube_merge_send = bool(
+            self._get_config_value("youtube_settings.merge_send", False)
+        )
+        self.youtube_cookies_file = str(
+            self._get_config_value("youtube_settings.cookies_file", "")
+        ).strip()
+
         # 小红书配置
         self.xhs_max_media = max(
             1, int(self._get_config_value("xhs_settings.max_media", 99))
@@ -318,7 +336,7 @@ class LinkResolverPlugin(
 
         # 构建启用平台列表
         enabled_list = [
-            p for p in ["B站", "抖音", "小红书", "微博", "X"] if p in enable_platforms
+            p for p in ["B站", "抖音", "小红书", "微博", "X", "YouTube"] if p in enable_platforms
         ]
         duration_label = (
             f"{self.bili_max_duration_seconds}s"
@@ -331,7 +349,7 @@ class LinkResolverPlugin(
             else "关闭"
         )
         logger.info(
-            "📹 LinkResolver 配置: 平台=%s, B站(画质=%s,合并=%s,摘要=%s,时长<=%s), 抖音(合并=%s,摘要=%s), 小红书(原图=%s,摘要=%s,大图转文件=%s), 微博(原图=%s,合并=%s,Cookie=%s), X(合并=%s,最多=%d), 字体(自动安装=%s,主字体=%s,Emoji=%s), 重试=%d",
+            "📹 LinkResolver 配置: 平台=%s, B站(画质=%s,合并=%s,摘要=%s,时长<=%s), 抖音(合并=%s,摘要=%s), 小红书(原图=%s,摘要=%s,大图转文件=%s), 微博(原图=%s,合并=%s,Cookie=%s), X(合并=%s,最多=%d), YouTube(最高=%sp,时长<=%ss,合并=%s), 字体(自动安装=%s,主字体=%s,Emoji=%s), 重试=%d",
             "/".join(enabled_list) if enabled_list else "无",
             self.video_quality.name,
             "开" if self.bili_merge_send else "关",
@@ -347,6 +365,9 @@ class LinkResolverPlugin(
             "开" if self.weibo_cookie_enabled else "关",
             "开" if self.twitter_merge_send else "关",
             self.twitter_max_media,
+            self.youtube_max_height or "不限",
+            self.youtube_max_duration_seconds or "不限",
+            "开" if self.youtube_merge_send else "关",
             "开" if self.font_auto_install_enabled else "关",
             "用户配置"
             if self.user_primary_font_ready
@@ -456,11 +477,13 @@ class LinkResolverPlugin(
                         "handle_douyin",
                         "handle_bili_video",
                         "handle_twitter",
+                        "handle_youtube",
                         "_process_xhs",
                         "_process_weibo",
                         "_process_douyin",
                         "_process_bili_video",
                         "_process_twitter",
+                        "_process_youtube",
                     )
                 ):
                     candidates.add(task)
@@ -1026,6 +1049,15 @@ class LinkResolverPlugin(
         self._register_parse_task("twitter", event)
         await TwitterMixin.handle_twitter(self, event)
 
+    @filter.regex(YOUTUBE_MESSAGE_PATTERN, priority=10)
+    async def handle_youtube(self, event: AstrMessageEvent):
+        if self._has_json_component(event):
+            return
+        if not self._is_group_allowed(event):
+            return
+        self._register_parse_task("youtube", event)
+        await YoutubeMixin.handle_youtube(self, event)
+
     @filter.regex(r".*")
     async def handle_json_card(self, event: AstrMessageEvent):
         if self._is_self_message(event):
@@ -1085,6 +1117,9 @@ class LinkResolverPlugin(
         twitter_links = [
             link for link in unique_links if re.search(TWITTER_MESSAGE_PATTERN, link)
         ]
+        youtube_links = [
+            link for link in unique_links if re.search(YOUTUBE_MESSAGE_PATTERN, link)
+        ]
 
         if bili_links and self.bili_enabled:
             self._register_parse_task("json-bili", event)
@@ -1137,6 +1172,16 @@ class LinkResolverPlugin(
             event.should_call_llm(True)
             try:
                 await self._process_twitter(event, twitter_links[0], is_from_card=True)
+                return
+            except asyncio.CancelledError:
+                logger.info("♻️ JSON卡片解析任务已中断")
+                return
+
+        if youtube_links and self.youtube_enabled:
+            self._register_parse_task("json-youtube", event)
+            event.should_call_llm(True)
+            try:
+                await self._process_youtube(event, youtube_links[0], is_from_card=True)
                 return
             except asyncio.CancelledError:
                 logger.info("♻️ JSON卡片解析任务已中断")

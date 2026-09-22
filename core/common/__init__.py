@@ -20,6 +20,7 @@ __all__ = [
     "get_weibo_image_path",
     "get_twitter_video_path",
     "get_twitter_image_path",
+    "get_youtube_video_path",
 ]
 
 from .exceptions import SizeLimitExceeded
@@ -39,6 +40,7 @@ from .paths import (
     get_twitter_image_path,
     get_twitter_video_path,
     get_weibo_image_path,
+    get_youtube_video_path,
     get_weibo_video_path,
     get_xhs_card_path,
     get_xhs_image_path,

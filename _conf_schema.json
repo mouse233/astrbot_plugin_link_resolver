@@ -8,14 +8,16 @@
             "抖音",
             "小红书",
             "微博",
-            "X"
+            "X",
+            "YouTube"
         ],
         "default": [
             "B站",
             "抖音",
             "小红书",
             "微博",
-            "X"
+            "X",
+            "YouTube"
         ]
     },
     "bili_settings": {
@@ -168,6 +170,40 @@
                 "type": "bool",
                 "hint": "仅对单视频推文生效。开启时发送摘要+视频的合并转发；关闭时只发送单独视频。图文、多视频、混合媒体推文始终合并转发。",
                 "default": false
+            }
+        }
+    },
+    "youtube_settings": {
+        "description": "YouTube 设置",
+        "type": "object",
+        "items": {
+            "max_height": {
+                "description": "最高下载分辨率",
+                "type": "int",
+                "hint": "优先下载不超过此高度的单文件视频。设为 0 表示不限；仍会受到通用视频大小限制约束。",
+                "default": 720,
+                "min": 0,
+                "max": 2160
+            },
+            "max_duration_seconds": {
+                "description": "最大视频时长(秒)",
+                "type": "int",
+                "hint": "视频时长超过此值时不下载。设为 0 表示不限制。",
+                "default": 1800,
+                "min": 0,
+                "max": 86400
+            },
+            "merge_send": {
+                "description": "YouTube 合并发送",
+                "type": "bool",
+                "hint": "开启后将视频标题、作者和视频合并转发；关闭则仅发送视频。",
+                "default": false
+            },
+            "cookies_file": {
+                "description": "YouTube Cookies 文件",
+                "type": "string",
+                "hint": "可选。Netscape 格式 cookies.txt 的绝对路径，用于受年龄或登录状态限制的视频。不要填写浏览器 Cookie 文本。",
+                "default": ""
             }
         }
     },

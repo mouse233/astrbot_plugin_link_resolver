@@ -3,7 +3,7 @@
 [![AstrBot Plugin](https://img.shields.io/badge/AstrBot-Plugin-blue?style=flat-square)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-green?style=flat-square)](LICENSE)
 
-支持监听聊天中的 **B站** / **抖音** / **小红书** / **微博** / **X** 链接，自动解析并发送视频、图集或动图。无需命令，发送链接即可触发。
+支持监听聊天中的 **B站** / **抖音** / **小红书** / **微博** / **X** / **YouTube** 链接，自动解析并发送视频、图集或动图。无需命令，发送链接即可触发。
 
 ---
 
