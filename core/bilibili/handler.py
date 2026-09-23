@@ -53,9 +53,11 @@ _BILI_HEADERS = {
 BILI_VIDEO_URL_PATTERN = (
     r"(https?://)?(?:(?:www|m)\.)?bilibili\.com/video/(BV[0-9A-Za-z]{10}|av\d+)"
 )
-BILI_SHORT_LINK_PATTERN = r"https?://(?:b23\.tv|bili2233\.cn)/[A-Za-z\d._?%&+\-=/#]+"
-BILI_BV_PATTERN = r"\bBV[0-9A-Za-z]{10}\b"
-BILI_AV_PATTERN = r"\bav\d+\b"
+BILI_SHORT_LINK_PATTERN = (
+    r"(?:https?://)?(?:b23\.tv|bili2233\.cn)/[A-Za-z\d._?%&+\-=/#]+"
+)
+BILI_BV_PATTERN = r"(?<![0-9A-Za-z_])BV[0-9A-Za-z]{10}(?![0-9A-Za-z_])"
+BILI_AV_PATTERN = r"(?<![0-9A-Za-z_])av\d+(?![0-9A-Za-z_])"
 BILI_MESSAGE_PATTERN = rf"(?s).*(?:{BILI_VIDEO_URL_PATTERN}|{BILI_SHORT_LINK_PATTERN}|{BILI_BV_PATTERN}|{BILI_AV_PATTERN})"
 
 QUALITY_ALIAS_MAP = {
@@ -270,12 +272,13 @@ class BilibiliMixin:
     def extract_links_from_text(self, text: str, include_ids: bool = True) -> list[str]:
         links: list[str] = []
         url_patterns = [
-            r"https?://(?:www\.)?bilibili\.com/video/[^\s\'\"<>]+",
-            r"https?://m\.bilibili\.com/video/[^\s\'\"<>]+",
-            r"https?://(?:b23\.tv|bili2233\.cn)/[^\s\'\"<>]+",
+            r"(?:https?://)?(?:www\.)?bilibili\.com/video/[^\s\'\"<>]+",
+            r"(?:https?://)?m\.bilibili\.com/video/[^\s\'\"<>]+",
+            r"(?:https?://)?(?:b23\.tv|bili2233\.cn)/[^\s\'\"<>]+",
         ]
         for pattern in url_patterns:
-            links.extend(re.findall(pattern, text, re.IGNORECASE))
+            for url in re.findall(pattern, text, re.IGNORECASE):
+                links.append(url if "://" in url else f"https://{url}")
         if include_ids:
             links.extend(re.findall(BILI_BV_PATTERN, text))
             links.extend(re.findall(BILI_AV_PATTERN, text, re.IGNORECASE))
