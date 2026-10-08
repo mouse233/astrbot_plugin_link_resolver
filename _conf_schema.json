@@ -180,7 +180,7 @@
             "max_height": {
                 "description": "最高下载分辨率",
                 "type": "string",
-                "hint": "下载高度上限；优先最高可用画质，不重新编码。原画不设上限，仍受大小限制。",
+                "hint": "下载高度上限; 优先最高可用画质, 不重新编码.原画不设上限, 仍受大小限制.",
                 "default": "1080P",
                 "options": [
                     "原画 (最高画质)",
@@ -197,7 +197,7 @@
             "max_duration_seconds": {
                 "description": "最大视频时长(秒)",
                 "type": "int",
-                "hint": "超过此时长不下载；0 为不限。",
+                "hint": "超过此时长不下载; 0 为不限.",
                 "default": 300,
                 "min": 0,
                 "max": 86400
@@ -205,7 +205,7 @@
             "video_codec": {
                 "description": "优先视频编码",
                 "type": "string",
-                "hint": "H.264 兼容性更好；AV1 通常更小。无匹配 MP4 流时自动回退。",
+                "hint": "H.264 兼容性更好; AV1 通常更小.无匹配 MP4 流时自动回退.",
                 "default": "H.264",
                 "options": [
                     "H.264",
@@ -215,19 +215,19 @@
             "merge_send": {
                 "description": "YouTube 合并发送",
                 "type": "bool",
-                "hint": "合并发送标题、作者和视频；关闭则只发视频。",
+                "hint": "合并发送标题、作者和视频; 关闭则只发视频.",
                 "default": false
             },
             "cookies": {
                 "description": "YouTube Cookies",
                 "type": "string",
-                "hint": "可选。粘贴完整 Netscape cookies.txt；不要粘贴 k=v;... 请求头。",
+                "hint": "可选.粘贴完整 Netscape cookies.txt; 不要粘贴 k=v;... 请求头.",
                 "default": ""
             },
             "player_client": {
                 "description": "YouTube 请求客户端",
                 "type": "string",
-                "hint": "默认自动选择；403 时回退 web_embedded（仅限可嵌入视频）。",
+                "hint": "默认自动选择; 403 时回退 web_embedded(仅限可嵌入视频).",
                 "default": "default",
                 "options": [
                     "default",

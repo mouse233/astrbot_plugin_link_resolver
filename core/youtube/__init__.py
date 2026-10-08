@@ -1,4 +1,4 @@
-"""YouTube link detection and yt-dlp-backed downloading."""
+"""YouTube 链接识别和媒体下载接口."""
 
 from .extractor import (
     YOUTUBE_MESSAGE_PATTERN,

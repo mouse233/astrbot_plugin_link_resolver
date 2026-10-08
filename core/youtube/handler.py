@@ -1,4 +1,4 @@
-"""AstrBot message handling for single YouTube videos."""
+"""接入 AstrBot 消息流程, 发送单个 YouTube 视频."""
 
 from __future__ import annotations
 
@@ -37,9 +37,7 @@ class YoutubeMixin:
         self, url: str, request_id: str, player_client: str
     ) -> tuple[YoutubeResult, Path]:
         max_bytes = (
-            self.max_video_size_mb * 1024 * 1024
-            if self.max_video_size_mb > 0
-            else None
+            self.max_video_size_mb * 1024 * 1024 if self.max_video_size_mb > 0 else None
         )
         return await self.youtube_extractor.download(
             url,
@@ -61,7 +59,9 @@ class YoutubeMixin:
             player_client=player_client,
         )
 
-    async def _process_youtube(self, event: AstrMessageEvent, target_link: str, is_from_card: bool = False) -> None:
+    async def _process_youtube(
+        self, event: AstrMessageEvent, target_link: str, is_from_card: bool = False
+    ) -> None:
         started = time.perf_counter()
         self._refresh_config()
         if not self.youtube_enabled:
@@ -76,7 +76,8 @@ class YoutubeMixin:
         request_id = uuid.uuid4().hex[:8]
         active_client = self.youtube_player_client
         fallback_attempted = active_client == "web_embedded"
-        for attempt in range(self.retry_count + 1):
+        attempt = 0
+        while attempt <= self.retry_count:
             try:
                 preview = await self._inspect_youtube_video(target_link, active_client)
                 if (
@@ -123,22 +124,49 @@ class YoutubeMixin:
                 break
 
             if attempt < self.retry_count:
-                logger.warning("⚠️ YouTube 处理失败%s: %s，重试 %d/%d", source_tag, last_error, attempt + 1, self.retry_count)
+                logger.warning(
+                    "⚠️ YouTube 处理失败%s: %s，重试 %d/%d",
+                    source_tag,
+                    last_error,
+                    attempt + 1,
+                    self.retry_count,
+                )
                 await asyncio.sleep(1.0)
+            attempt += 1
         if result is None or video_path is None:
-            logger.error("❌ YouTube 处理失败%s: %s", source_tag, last_error or "未知错误")
+            logger.error(
+                "❌ YouTube 处理失败%s: %s", source_tag, last_error or "未知错误"
+            )
             return
         try:
             component = Video.fromFileSystem(str(video_path.resolve()))
             if self.youtube_merge_send:
                 nodes = Nodes([])
                 sender_uin = self._get_merge_sender_uin(event)
-                nodes.nodes.append(Node(uin=sender_uin, content=[Plain(self._build_youtube_summary(result))]))
-                nodes.nodes.append(Node(uin=sender_uin, content=[await self._prepare_component_for_merge_send(component)]))
+                nodes.nodes.append(
+                    Node(
+                        uin=sender_uin,
+                        content=[Plain(self._build_youtube_summary(result))],
+                    )
+                )
+                nodes.nodes.append(
+                    Node(
+                        uin=sender_uin,
+                        content=[
+                            await self._prepare_component_for_merge_send(component)
+                        ],
+                    )
+                )
                 await event.send(MessageChain([nodes]))
             else:
                 await event.send(MessageChain([component]))
-            logger.info("▶️ YouTube 处理完成%s: id=%s, 文件=%s, 耗时=%.2fs", source_tag, result.video_id, video_path.name, time.perf_counter() - started)
+            logger.info(
+                "▶️ YouTube 处理完成%s: id=%s, 文件=%s, 耗时=%.2fs",
+                source_tag,
+                result.video_id,
+                video_path.name,
+                time.perf_counter() - started,
+            )
         finally:
             await self.cleanup_files([video_path], [])
 

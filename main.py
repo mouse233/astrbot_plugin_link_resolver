@@ -33,8 +33,6 @@ from .core.douyin import DOUYIN_MESSAGE_PATTERN, DouyinExtractor
 from .core.douyin.handler import DouyinMixin
 from .core.twitter import TWITTER_MESSAGE_PATTERN, TwitterExtractor
 from .core.twitter.handler import TwitterMixin
-from .core.youtube import YOUTUBE_MESSAGE_PATTERN, YoutubeExtractor
-from .core.youtube.handler import YoutubeMixin
 from .core.weibo import WEIBO_MESSAGE_PATTERN, WeiboExtractor
 from .core.weibo.handler import WeiboMixin
 from .core.xiaohongshu import (
@@ -43,6 +41,8 @@ from .core.xiaohongshu import (
     XiaohongshuExtractor,
 )
 from .core.xiaohongshu.handler import XiaohongshuMixin
+from .core.youtube import YOUTUBE_MESSAGE_PATTERN, YoutubeExtractor
+from .core.youtube.handler import YoutubeMixin
 
 # endregion
 
@@ -61,7 +61,13 @@ SUMMARY_MODE_CARD = "渲染卡片"
     "1.0.14",
 )
 class LinkResolverPlugin(
-    BilibiliMixin, DouyinMixin, XiaohongshuMixin, WeiboMixin, TwitterMixin, YoutubeMixin, Star
+    BilibiliMixin,
+    DouyinMixin,
+    XiaohongshuMixin,
+    WeiboMixin,
+    TwitterMixin,
+    YoutubeMixin,
+    Star,
 ):
     def __init__(self, context: Context, config: AstrBotConfig | dict | None = None):
         super().__init__(context)
@@ -241,9 +247,11 @@ class LinkResolverPlugin(
         )
 
         # YouTube 配置
-        _youtube_height = str(
-            self._get_config_value("youtube_settings.max_height", "1080P")
-        ).strip().upper()
+        _youtube_height = (
+            str(self._get_config_value("youtube_settings.max_height", "1080P"))
+            .strip()
+            .upper()
+        )
         youtube_height_options = {
             "原画 (最高画质)": 0,
             "8K": 4320,
@@ -255,8 +263,7 @@ class LinkResolverPlugin(
             "240P": 240,
             "144P": 144,
         }
-        # Keep existing numeric configuration values working after switching
-        # this item from a number input to the quality menu.
+        # 兼容早期配置中的数字分辨率值.
         legacy_youtube_height_options = {
             "0": 0,
             "144": 144,
@@ -275,9 +282,11 @@ class LinkResolverPlugin(
         self.youtube_max_duration_seconds = max(
             0, int(self._get_config_value("youtube_settings.max_duration_seconds", 300))
         )
-        _youtube_codec = str(
-            self._get_config_value("youtube_settings.video_codec", "H.264")
-        ).strip().upper()
+        _youtube_codec = (
+            str(self._get_config_value("youtube_settings.video_codec", "H.264"))
+            .strip()
+            .upper()
+        )
         self.youtube_video_codec = "av1" if _youtube_codec == "AV1" else "h264"
         self.youtube_merge_send = bool(
             self._get_config_value("youtube_settings.merge_send", False)
@@ -389,7 +398,9 @@ class LinkResolverPlugin(
 
         # 构建启用平台列表
         enabled_list = [
-            p for p in ["B站", "抖音", "小红书", "微博", "X", "YouTube"] if p in enable_platforms
+            p
+            for p in ["B站", "抖音", "小红书", "微博", "X", "YouTube"]
+            if p in enable_platforms
         ]
         duration_label = (
             f"{self.bili_max_duration_seconds}s"

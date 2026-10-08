@@ -1,10 +1,12 @@
-"""Tests for the isolated YouTube yt-dlp integration."""
+"""验证 YouTube 链接识别及 yt-dlp 下载边界."""
 
 from __future__ import annotations
 
 import asyncio
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,6 +14,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core"))
 
 from youtube import (
+    YoutubeDownloadError,
     YoutubeExtractor,
     YoutubeParseError,
     extract_youtube_links,
@@ -76,7 +79,9 @@ class TestYoutubeExtractor(unittest.TestCase):
 
     def test_youtube_403_detection_is_specific_to_stream_denials(self):
         self.assertTrue(
-            is_youtube_403_error("ERROR: unable to download video data: HTTP Error 403: Forbidden")
+            is_youtube_403_error(
+                "ERROR: unable to download video data: HTTP Error 403: Forbidden"
+            )
         )
         self.assertFalse(is_youtube_403_error("HTTP Error 429: Too Many Requests"))
 
@@ -107,7 +112,9 @@ class TestYoutubeExtractor(unittest.TestCase):
 
     def test_download_uses_limit_and_returns_media_file(self):
         with tempfile.TemporaryDirectory() as directory:
-            with patch("youtube.extractor._get_yt_dlp_class", return_value=FakeYoutubeDL):
+            with patch(
+                "youtube.extractor._get_yt_dlp_class", return_value=FakeYoutubeDL
+            ):
                 result, output = asyncio.run(
                     YoutubeExtractor().download(
                         "https://youtu.be/RHXOhUKP5Y0",
@@ -139,8 +146,95 @@ class TestYoutubeExtractor(unittest.TestCase):
         selector = YoutubeExtractor._build_format_selector(
             max_height=720, video_codec="av1", ffmpeg_available=False
         )
-        self.assertTrue(selector.startswith("bv*[vcodec^=av01][ext=mp4][height<=720]"))
+        self.assertTrue(selector.startswith("b[vcodec^=av01][ext=mp4][height<=720]"))
         self.assertNotIn("+ba[ext=m4a]", selector)
+
+    def test_failed_download_removes_partial_streams(self):
+        class FailedYoutubeDL(FakeYoutubeDL):
+            def extract_info(self, url, download=False):
+                Path(
+                    self.options["outtmpl"]
+                    .replace("%(id)s", "partial")
+                    .replace("%(ext)s", "mp4.part")
+                ).write_bytes(b"partial")
+                raise RuntimeError("HTTP Error 403: Forbidden")
+
+        with tempfile.TemporaryDirectory() as directory:
+            with patch(
+                "youtube.extractor._get_yt_dlp_class", return_value=FailedYoutubeDL
+            ):
+                with self.assertRaises(YoutubeDownloadError):
+                    asyncio.run(
+                        YoutubeExtractor().download(
+                            "https://youtu.be/RHXOhUKP5Y0", Path(directory), "failed"
+                        )
+                    )
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_cancelled_download_waits_for_cleanup(self):
+        started = threading.Event()
+
+        class SlowYoutubeDL(FakeYoutubeDL):
+            def extract_info(self, url, download=False):
+                Path(
+                    self.options["outtmpl"]
+                    .replace("%(id)s", "partial")
+                    .replace("%(ext)s", "mp4.part")
+                ).write_bytes(b"partial")
+                started.set()
+                while True:
+                    self.options["progress_hooks"][0]({})
+                    time.sleep(0.005)
+
+        async def cancel_download(directory):
+            task = asyncio.create_task(
+                YoutubeExtractor().download(
+                    "https://youtu.be/RHXOhUKP5Y0", Path(directory), "cancelled"
+                )
+            )
+            self.assertTrue(await asyncio.to_thread(started.wait, 2))
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        with tempfile.TemporaryDirectory() as directory:
+            with patch(
+                "youtube.extractor._get_yt_dlp_class", return_value=SlowYoutubeDL
+            ):
+                asyncio.run(cancel_download(directory))
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_without_ffmpeg_selects_video_with_audio(self):
+        try:
+            from yt_dlp import YoutubeDL
+        except ImportError:
+            self.skipTest("需要 yt-dlp 验证真实格式选择器")
+        formats = [
+            {
+                "format_id": "combined",
+                "url": "https://example.com/combined",
+                "ext": "mp4",
+                "height": 360,
+                "vcodec": "avc1",
+                "acodec": "mp4a",
+            },
+            {
+                "format_id": "silent",
+                "url": "https://example.com/silent",
+                "ext": "mp4",
+                "height": 720,
+                "vcodec": "avc1",
+                "acodec": "none",
+            },
+        ]
+        selector = YoutubeExtractor._build_format_selector(
+            max_height=720, video_codec="h264", ffmpeg_available=False
+        )
+        with YoutubeDL({"quiet": True, "format": selector}) as ydl:
+            info = ydl.process_ie_result(
+                {"id": "sample", "title": "sample", "formats": formats}, download=False
+            )
+        self.assertEqual(info["format_id"], "combined")
 
 
 if __name__ == "__main__":

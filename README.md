@@ -133,19 +133,21 @@ ffmpeg -version
 
 ### YouTube 设置
 
+需要 yt-dlp 2026.8.19 或更新版本.
+
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `youtube_settings.cookies` | 可选。完整 Netscape `cookies.txt` 文本，用于需登录内容 | 空 |
-| `youtube_settings.max_height` | 最高下载分辨率：原画、8K、4K、1080P、720P、480P、360P、240P 或 144P | `1080P` |
-| `youtube_settings.max_duration_seconds` | 最大视频时长(秒)，超过即忽略 | `300` |
-| `youtube_settings.video_codec` | 优先视频编码：`H.264`（兼容桌面 QQ，推荐）或 `AV1`（体积通常更小） | `H.264` |
-| `youtube_settings.player_client` | yt-dlp 请求客户端：`default` 或 `web_embedded` | `default` |
+| `youtube_settings.cookies` | 可选.完整 Netscape `cookies.txt` 文本, 用于需登录内容 | 空 |
+| `youtube_settings.max_height` | 最高下载分辨率: 原画, 8K, 4K, 1080P, 720P, 480P, 360P, 240P 或 144P | `1080P` |
+| `youtube_settings.max_duration_seconds` | 最大视频时长(秒), 超过即忽略 | `300` |
+| `youtube_settings.video_codec` | 优先视频编码: `H.264`(兼容桌面 QQ, 推荐)或 `AV1`(体积通常更小) | `H.264` |
+| `youtube_settings.player_client` | yt-dlp 请求客户端: `default` 或 `web_embedded` | `default` |
 
-媒体流遇到 HTTP 403 时，插件会回退一次到 `web_embedded`。仍失败时，请重载插件以更新依赖，并检查 Cookie 和出口 IP；该客户端仅适用于可嵌入视频。
+媒体流遇到 HTTP 403 时, 插件会回退一次到 `web_embedded`.仍失败时, 请重载插件以更新依赖, 并检查 Cookie 和出口 IP; 该客户端仅适用于可嵌入视频.
 
-### YouTube Cookies（可选）
+### YouTube Cookies(可选)
 
-将浏览器扩展导出的 `.youtube.com` **完整 Netscape `cookies.txt`** 原样粘贴到 `youtube_settings.cookies`。不要粘贴 `SID=...; HSID=...` 这类单行请求头，也不要手动删减字段。
+将浏览器扩展导出的 `.youtube.com` **完整 Netscape `cookies.txt`** 原样粘贴到 `youtube_settings.cookies`.不要粘贴 `SID=...; HSID=...` 这类单行请求头, 也不要手动删减字段.
 
 
 ---
